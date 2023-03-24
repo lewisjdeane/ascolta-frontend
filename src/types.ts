@@ -89,11 +89,24 @@ export interface LiveChatMessagePostBody {
 export interface AssistantFormat {
     message: string
     suggestions: string
+    suggestions_en: string
+    ideas: string[]
 }
 
 export interface AssistantMessage {
     message: string
-    isSuggestion: boolean
+    suggestionType: SuggestionType
+}
+
+export interface AssistantResponse {
+    messages: AssistantMessage[]
+    ideas: string[]
+}
+
+export enum SuggestionType {
+    NONE,
+    ENGLISH,
+    NATIVE,
 }
 
 export const LanguageAll = { option: "All", filter: false, code: null, flag: null }

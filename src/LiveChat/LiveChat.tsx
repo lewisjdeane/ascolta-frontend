@@ -1,11 +1,14 @@
-import { ChatCompletionResponseMessage } from "openai"
-import React, { useState } from "react"
+import { ChatCompletionRequestMessage, ChatCompletionResponseMessage } from "openai"
+import React, { ReactNode, useState } from "react"
 import { useLoaderData } from "react-router-dom"
 import ContactCard from "./ContactCard"
-import { ApiResponseLiveChatSetup } from "../types"
+import { ApiResponseLiveChatSetup, AssistantMessage, languages, SuggestionType } from "../types"
 import { generateNewLiveChat, sendLiveChatMessage } from "../api/live-chat"
-import { parseMessage } from "./utils"
-import TypingIndicator from "./TypingIndicator"
+import { mapWithIndex, parseMessage } from "./utils"
+import LiveChatMessageContainer from "./LiveChatMessageContainer"
+import LiveChatMessage from "./LiveChatMessage"
+import IdeaButton from "./IdeaButton"
+import LiveChatTypingMessage from "./LiveChatTypingMessage"
 
 export async function loader(languageCode: string) {
     const data = await generateNewLiveChat(languageCode)
@@ -21,12 +24,11 @@ const LiveChat: () => JSX.Element = () => {
     const [input, setInput] = useState("")
     const [isTyping, setIsTyping] = useState(false)
 
-    async function sendMessage() {
-        const userInput = input
-        displayUserMessage(userInput)
+    async function sendMessage(text: string) {
+        displayUserMessage(text)
         setInput("")
         setIsTyping(true)
-        const messages = await sendLiveChatMessage(id, userInput)
+        const messages = await sendLiveChatMessage(id, text)
         setIsTyping(false)
         setMessages(messages)
     }
@@ -40,29 +42,93 @@ const LiveChat: () => JSX.Element = () => {
         return [...messages].reverse()
     }
 
-    function containerClasses(isUser: boolean): string {
-        return isUser ? "flex justify-end mb-4" : "flex justify-start mb-4"
-    }
-
-    function messageClasses(isUser: boolean, isSuggestion: boolean = false): string {
-        const commonClasses = "whitespace-pre-wrap p-2 rounded-lg max-w-xl"
-        if (isUser) {
-            return `${commonClasses} bg-indigo-500 text-white`
-        } else if (isSuggestion) {
-            return `${commonClasses} bg-green-200 text-gray-700 text-sm font-bold`
-        } else {
-            return `${commonClasses} bg-gray-300 text-black`
-        }
-    }
-
     const handleSendMessage = async (event: React.FormEvent) => {
         event.preventDefault()
         if (input.trim() === "") return
-        sendMessage()
+        sendMessage(input)
+    }
+
+    function getImageSource(message: AssistantMessage): string {
+        switch (message.suggestionType) {
+            // Normal chat response, use character avatar.
+            case SuggestionType.NONE:
+                return character.avatar_url
+            // Suggestion in the target language, use the appropriate flag.
+            case SuggestionType.NATIVE:
+                return languages.find((language) => language.code === character.language_config.language).flag
+            // Suggestion in English, use a British flag.
+            case SuggestionType.ENGLISH:
+                return "https://flagicons.lipis.dev/flags/4x3/gb.svg"
+        }
+    }
+
+    function renderMessages(): ReactNode {
+        return mapWithIndex(getReversedMessages(), (index, message) => renderMessage(index, message))
+    }
+
+    /**
+     * Renders a given a API message in the conversation.
+     * @param index The index of the response in the conversation.
+     * @param message The message in the API conversation - does not map 1-1 with what the user sees
+     * @returns The components to render this API message.
+     */
+    function renderMessage(index: number, message: ChatCompletionRequestMessage): ReactNode {
+        switch (message.role) {
+            case "system":
+                return <></>
+            case "user":
+                return (
+                    <LiveChatMessageContainer isUser={true}>
+                        <LiveChatMessage isUser={true} suggestionType={SuggestionType.NONE}>
+                            {message.content}
+                        </LiveChatMessage>
+                    </LiveChatMessageContainer>
+                )
+            case "assistant":
+                // Message response is expected to be JSON from the assistant so we parse it to get out the various bits to present.
+                const parsed = parseMessage(message.content)
+                const messages = parsed.messages
+                const ideas = parsed.ideas
+
+                return messages.map((messagePart) => {
+                    return (
+                        <LiveChatMessageContainer isUser={false} avatar_url={getImageSource(messagePart)}>
+                            <LiveChatMessage
+                                isUser={false}
+                                suggestionType={messagePart.suggestionType}
+                                text={messagePart.message}
+                            >
+                                {renderIdeas(index, messagePart.suggestionType, ideas)}
+                            </LiveChatMessage>
+                        </LiveChatMessageContainer>
+                    )
+                })
+            default:
+                return <></>
+        }
+    }
+
+    /**
+     * Renders the list of ideas in the chat message as small buttons that the user can click to send.
+     * @param index The index of this parent message in the conversation.
+     * @param suggestionType Indicates whether or not this message is considered a suggestion or not.
+     * @param ideas A list of ideas to send in response to the AI's last message.
+     * @returns The components for the ideas if we are to show them now.
+     */
+    function renderIdeas(index: number, suggestionType: SuggestionType, ideas: string[]): ReactNode {
+        // Only show ideas if:
+        //  1. This is the latest message in the conversation - no point showing older ones.
+        //  2. If this message is not a suggestion - we only want to render the items in the character's response message box.
+        if (index === 0 && suggestionType === SuggestionType.NONE) {
+            return ideas.map((idea) => <IdeaButton text={idea} onClick={() => sendMessage(idea)} />)
+        } else {
+            return <></>
+        }
     }
 
     return (
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+            {/* Show a summary of the character that the user is chatting to. */}
             <ContactCard
                 name={character.name}
                 age={character.age}
@@ -70,7 +136,8 @@ const LiveChat: () => JSX.Element = () => {
                 avatarUrl={character.avatar_url}
             />
 
-            <form className="flex-grow flex mt-8 mb-4 mx-4" onSubmit={handleSendMessage}>
+            {/* Text box and send button. */}
+            <form className="flex-grow flex mt-8 mb-4" onSubmit={handleSendMessage}>
                 <input
                     id="textInput"
                     value={input}
@@ -86,49 +153,11 @@ const LiveChat: () => JSX.Element = () => {
                 </button>
             </form>
 
-            {isTyping ? (
-                <div className={containerClasses(false)}>
-                    {<img alt="" src={character.avatar_url} className={"w-8 h-8 rounded-full mr-2"} />}
-                    <div className={messageClasses(false, false)}>
-                        <TypingIndicator />
-                    </div>
-                </div>
-            ) : (
-                <></>
-            )}
+            {/* If we are waiting for a response from the backend, show a nice typing animation. */}
+            {isTyping ? <LiveChatTypingMessage avatar_url={character.avatar_url} /> : <></>}
 
-            {getReversedMessages().map((message) => {
-                if (message.role === "system") {
-                    return <></>
-                } else if (message.role === "user") {
-                    return (
-                        <div className={containerClasses(true)}>
-                            <div className={messageClasses(true)}>
-                                <p>{message.content}</p>
-                            </div>
-                        </div>
-                    )
-                } else {
-                    return parseMessage(message.content).map((part) => {
-                        return (
-                            <div className={containerClasses(false)}>
-                                {
-                                    <img
-                                        alt=""
-                                        src={character.avatar_url}
-                                        className={`w-8 h-8 rounded-full mr-2 ${
-                                            part.isSuggestion ? "invisible" : "visible"
-                                        }`}
-                                    />
-                                }
-                                <div className={messageClasses(false, part.isSuggestion)}>
-                                    <p>{part.message}</p>
-                                </div>
-                            </div>
-                        )
-                    })
-                }
-            })}
+            {/* Render the list of messages in the conversation. */}
+            {renderMessages()}
         </div>
     )
 }
