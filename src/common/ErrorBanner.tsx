@@ -1,4 +1,4 @@
-import React, { ReactNode } from "react"
+import React from "react"
 import { XCircleIcon } from '@heroicons/react/20/solid'
 
 export interface ErrorBannerProps {
