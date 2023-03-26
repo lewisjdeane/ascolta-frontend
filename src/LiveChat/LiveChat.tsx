@@ -9,6 +9,7 @@ import LiveChatMessageContainer from "./LiveChatMessageContainer"
 import LiveChatMessage from "./LiveChatMessage"
 import IdeaButton from "./IdeaButton"
 import LiveChatTypingMessage from "./LiveChatTypingMessage"
+import ErrorBanner from "../common/ErrorBanner"
 
 export async function loader(languageCode: string) {
     const data = await generateNewLiveChat(languageCode)
@@ -23,14 +24,20 @@ const LiveChat: () => JSX.Element = () => {
     const [messages, setMessages]: [ChatCompletionResponseMessage[], any] = useState([])
     const [input, setInput] = useState("")
     const [isTyping, setIsTyping] = useState(false)
+    const [hitError, setHitError] = useState(false)
 
     async function sendMessage(text: string) {
         displayUserMessage(text)
         setInput("")
         setIsTyping(true)
-        const messages = await sendLiveChatMessage(id, text)
-        setIsTyping(false)
-        setMessages(messages)
+        try {
+            const messages = await sendLiveChatMessage(id, text)
+            setIsTyping(false)
+            setMessages(messages)
+        } catch (error) {
+            setIsTyping(false)
+            setHitError(true)
+        }
     }
 
     function displayUserMessage(text: string) {
@@ -136,22 +143,27 @@ const LiveChat: () => JSX.Element = () => {
                 avatarUrl={character.avatar_url}
             />
 
-            {/* Text box and send button. */}
-            <form className="flex-grow flex mt-8 mb-4" onSubmit={handleSendMessage}>
-                <input
-                    id="textInput"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    className="w-full px-4 py-2 inline rounded-md border-2 border-indigo-400 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-indigo-400 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-                    placeholder="Type a message"
-                />
-                <button
-                    type="submit"
-                    className="ml-4 inline-flex items-center rounded-md border border-transparent px-4 py-2 text-base font-medium text-white shadow-sm bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                >
-                    Send
-                </button>
-            </form>
+            {hitError ?
+                /* Render error message. */
+                <ErrorBanner title="Sorry, we are unable to generate responses at the moment, please try again later. Thank you for your patience."/> :
+
+                /* Text box and send button. */
+                <form className="flex-grow flex mt-8 mb-4" onSubmit={handleSendMessage}>
+                    <input
+                        id="textInput"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        className="w-full px-4 py-2 inline rounded-md border-2 border-indigo-400 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-indigo-400 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                        placeholder="Type a message"
+                    />
+                    <button
+                        type="submit"
+                        className="ml-4 inline-flex items-center rounded-md border border-transparent px-4 py-2 text-base font-medium text-white shadow-sm bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    >
+                        Send
+                    </button>
+                </form>
+            }
 
             {/* If we are waiting for a response from the backend, show a nice typing animation. */}
             {isTyping ? <LiveChatTypingMessage avatar_url={character.avatar_url} /> : <></>}
