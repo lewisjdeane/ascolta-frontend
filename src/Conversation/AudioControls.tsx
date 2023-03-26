@@ -56,7 +56,6 @@ const AudioControls: React.FC<AudioControlsProps> = ({ audio, showTranscript, se
                 onTimeUpdate={onTimeUpdate}
                 onEnded={onAudioEnded}
             ></audio>{" "}
-            : <></>
             {audioCurrentTime && audioLength ? (
                 <>
                     <div className="flex items-center w-full">
